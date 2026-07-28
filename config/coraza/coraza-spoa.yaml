@@ -1,23 +1,64 @@
-# Coraza SPOA agent config. Listens on 127.0.0.1:9001 for HAProxy SPOE.
-bind: 0.0.0.0:9001
+# Coraza SPOA agent config.
+# Coraza speaks ModSecurity SecLang and is 100% compatible with OWASP CRS v4.
+#
+# Schema matches coraza-spoa 0.7.x (validate with `-validate`):
+#   - `applications` is a LIST of objects with a `name:` key (NOT a map)
+#   - unknown keys are a hard parse error (KnownFields=true in the agent)
+#   - per-application log_level/log_file/log_format are required
+#
+# ROLLOUT DISCIPLINE (do not skip):
+#   1) Start with SecRuleEngine DetectionOnly (logs, does NOT block).
+#   2) Run 1-2 weeks against real OWA traffic, collect false positives.
+#   3) Add CRS exclusions for OWA (rule IDs 100000-189999) in ./rules.
+#   4) Only then flip to SecRuleEngine On to actually block.
+# OWA is notorious for CRS false positives - blocking on day one WILL break mail.
+
+# 0.0.0.0 inside the container; Docker publishes it as 127.0.0.1:9001 only.
+bind: 0.0.0.0:9000
 log_level: info
-log_format: json
+log_file: /dev/stdout
+log_format: console
 
-# Per-application WAF engine. Start in DetectionOnly, collect false positives, then switch
-# "SecRuleEngine DetectionOnly" to "SecRuleEngine On" to enforce.
+# Fallback if the app arg from HAProxy does not match any name below.
+default_application: owa_app
+
 applications:
-  owa:
-    directives: |
-      SecRuleEngine DetectionOnly
-      SecRequestBodyAccess On
-      SecResponseBodyAccess Off
-      SecRequestBodyLimit 13107200
-      SecRequestBodyLimitAction ProcessPartial
-
-      # OWASP Core Rule Set v4 (mounted into the container).
-      Include /etc/coraza-spoa/coraza.conf-recommended
-      Include /etc/coraza-spoa/crs-setup.conf
-      Include /etc/coraza-spoa/rules/*.conf
-
+  # Must match args app=str(owa_app) in coraza.cfg
+  - name: owa_app
+    log_level: info
+    log_file: /dev/stdout
+    log_format: console
+    # Inspect responses too (helps catch reflected XSS in output).
+    # Requires the coraza-res message to carry id=var(txn.coraza.id).
+    response_check: true
     transaction_ttl_ms: 60000
-    request_body_in_memory_limit: 13107200
+    directives: |
+      # Coraza recommended baseline
+      Include @coraza.conf-recommended
+      # CRS setup (anomaly scoring, paranoia level)
+      Include @crs-setup.conf.example
+
+      # --- CRS tuning for OWA (start conservative) ---
+      # Paranoia level 1 = fewest false positives. Raise to 2 only after tuning.
+      SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level=1"
+      # Anomaly thresholds: higher = more permissive. Loosen if OWA trips CRS.
+      SecAction "id:900110,phase:1,nolog,pass,t:none,setvar:tx.inbound_anomaly_score_threshold=10,setvar:tx.outbound_anomaly_score_threshold=8"
+
+      # The OWASP Core Rule Set
+      Include @owasp_crs/*.conf
+
+      # --- Local exclusions for OWA go here (IDs 100000-189999) ---
+      # Add AFTER you observe real false positives, e.g.:
+      # SecRuleRemoveById 942100
+      # SecRuleUpdateTargetById 920273 "!ARGS:Body"
+      # Include /etc/coraza-spoa/rules/owa-exclusions.conf
+
+      # --- START IN DETECTION MODE. Flip to "On" after tuning. ---
+      SecRuleEngine DetectionOnly
+      # SecRuleEngine On
+
+      # Inspect request/response bodies.
+      SecRequestBodyAccess On
+      SecResponseBodyAccess On
+      SecRequestBodyLimit 13107200
+      SecRequestBodyNoFilesLimit 131072

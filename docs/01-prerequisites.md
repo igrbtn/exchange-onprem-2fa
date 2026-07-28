@@ -42,12 +42,62 @@ unsupported clients during migration (and know that those bypass the second fact
 
 ## Certificates and DNS
 
-- An internal CA (Enterprise Root CA is fine) to issue web server certificates.
-- One multi-SAN certificate for HAProxy covering: `mail`, `autodiscover`, `sts`, `kc`,
-  `owa`, `ecp` under your domain.
-- A separate certificate for Exchange itself (SAN `mail`, `autodiscover`, server FQDN).
-- DNS A records for `mail`, `autodiscover`, `owa`, `ecp`, `sts`, `kc` pointing at HAProxy.
-- All clients must trust your internal CA root.
+You need an internal CA (an AD CS Enterprise Root CA is fine) and three things: a multi-SAN
+cert on HAProxy, a cert on Exchange, and DNS pointing clients at HAProxy.
+
+### DNS
+
+All client-facing names resolve to the HAProxy IP (clients never talk to the backends
+directly). Point the backend server names at their real hosts for HAProxy's own re-encrypt
+connections.
+
+| Record | Resolves to | Used by |
+| --- | --- | --- |
+| `mail.corp.example` | HAProxy | OWA, ECP, MAPI, EWS, EAS, OAB |
+| `autodiscover.corp.example` | HAProxy | Autodiscover |
+| `owa.corp.example`, `ecp.corp.example` | HAProxy | optional split names (usually just use `mail`) |
+| `sts.corp.example` | HAProxy | AD FS |
+| `kc.corp.example` | HAProxy | Keycloak |
+
+Also set the internal Autodiscover SCP and the Exchange virtual-directory URLs to
+`https://mail.corp.example/...` so clients converge on the one namespace.
+
+### HAProxy certificate (multi-SAN)
+
+One certificate with SAN covering every client-facing name:
+`mail`, `autodiscover`, `sts`, `kc` (and `owa`/`ecp` if you split them). Issue it from your CA,
+export to PFX, then build the PEM HAProxy wants:
+
+```bash
+openssl pkcs12 -in haproxy.pfx -nodes -out /etc/haproxy/certs/lab.pem
+chmod 600 /etc/haproxy/certs/lab.pem
+```
+
+### Exchange certificate
+
+A separate server-auth cert (SAN `mail`, `autodiscover`, and the server FQDN). From the
+Exchange Management Shell:
+
+```powershell
+$req = New-ExchangeCertificate -GenerateRequest `
+  -SubjectName 'CN=mail.corp.example' `
+  -DomainName mail.corp.example,autodiscover.corp.example,exch01.corp.example `
+  -PrivateKeyExportable $true
+Set-Content -Path C:\req.txt -Value $req
+# submit C:\req.txt to your CA (WebServer template), then import the issued cert:
+Import-ExchangeCertificate -FileData ([byte[]](Get-Content C:\issued.cer -Encoding byte))
+Get-ExchangeCertificate | Where-Object {$_.Subject -like '*mail.corp.example*'} |
+  Enable-ExchangeCertificate -Services IIS,SMTP
+```
+
+> AD FS and Keycloak each need their own server-auth cert too (subject `sts.corp.example` /
+> `kc.corp.example`) - see [02-adfs-keycloak.md](02-adfs-keycloak.md).
+
+### Trust
+
+Every client (Windows, macOS, iOS) must trust your internal CA **root** certificate, or the
+TLS handshake to HAProxy fails. Distribute the root via GPO (domain machines) and a
+configuration profile / Keychain (macOS/iOS).
 
 ## Network
 

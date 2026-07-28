@@ -1,12 +1,29 @@
+# OWASP Coraza WAF as a SPOA agent for HAProxy.
+# Run on the SAME host as HAProxy to minimize SPOE latency.
+# HAProxy reaches the agent at 127.0.0.1:9001 (see coraza.cfg backend);
+# 9000 on the host is taken by the HAProxy stats listener.
+
 services:
   coraza-spoa:
+    # Pin the version: the registry has NO :latest tag (pull fails), and the
+    # config schema changed across releases. Validate after every bump:
+    #   docker compose run --rm coraza-spoa /coraza-spoa \
+    #     -config /etc/coraza-spoa/coraza-spoa.yaml -validate
     image: ghcr.io/corazawaf/coraza-spoa:0.7.2
     container_name: coraza-spoa
     restart: unless-stopped
-    # Bind to loopback only; HAProxy connects from the same host.
+    # Bind only to localhost so the agent is never exposed on the network.
     ports:
-      - "127.0.0.1:9001:9001"
+      - "127.0.0.1:9001:9000"
     volumes:
       - ./coraza-spoa.yaml:/etc/coraza-spoa/coraza-spoa.yaml:ro
-      - ./crs:/etc/coraza-spoa:ro
-    command: ["-config", "/etc/coraza-spoa/coraza-spoa.yaml"]
+      # Mount custom rules / CRS exclusions maintained outside the image.
+      - ./rules:/etc/coraza-spoa/rules:ro
+    # The image has an empty ENTRYPOINT and a full CMD, so command must include
+    # the binary itself, not just flags.
+    command: ["/coraza-spoa", "--config", "/etc/coraza-spoa/coraza-spoa.yaml"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
