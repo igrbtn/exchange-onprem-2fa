@@ -1,0 +1,12 @@
+services:
+  coraza-spoa:
+    image: ghcr.io/corazawaf/coraza-spoa:0.7.2
+    container_name: coraza-spoa
+    restart: unless-stopped
+    # Bind to loopback only; HAProxy connects from the same host.
+    ports:
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - ./coraza-spoa.yaml:/etc/coraza-spoa/coraza-spoa.yaml:ro
+      - ./crs:/etc/coraza-spoa:ro
+    command: ["-config", "/etc/coraza-spoa/coraza-spoa.yaml"]

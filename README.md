@@ -1,0 +1,105 @@
+# Exchange on-prem 2FA with AD FS + Keycloak (TOTP)
+
+Add real two-factor authentication (TOTP) to **Microsoft Exchange Server on-premises**
+without Azure AD / Entra ID. Browser clients (OWA/ECP) and rich clients (Outlook desktop,
+macOS/iOS Mail) authenticate through **AD FS**, which delegates the login to an external
+identity provider - **Keycloak** - that enforces TOTP. Everything sits behind an
+**HAProxy** reverse proxy (SSL bridging) with an optional **Coraza WAF**.
+
+This is a field-tested reference build. It complements Microsoft's
+[Enable modern authentication in Exchange Server on-premises](https://learn.microsoft.com/en-us/exchange/plan-and-deploy/post-installation-tasks/enable-modern-auth-in-exchange-server-on-premises)
+with the dozen non-obvious gotchas that the official guide leaves out (see
+[docs/09-troubleshooting.md](docs/09-troubleshooting.md)).
+
+> Author: **Igor Batin** ([@igrbtn](https://github.com/igrbtn) - [batin.uz](https://batin.uz)).
+> Licensed under MIT - attribution required (keep the copyright notice).
+
+---
+
+## Why this exists
+
+Microsoft's cloud story for MFA is Entra ID. On-premises Exchange has **no native MFA**:
+OWA forms auth and Basic auth for rich clients are single-factor. The supported path to add
+MFA on-prem is *claims/OAuth via AD FS* - but AD FS itself has no built-in TOTP. This project
+chains a standards-based IdP (Keycloak) behind AD FS as a **Claims Provider Trust**, so:
+
+- **OWA / ECP** redirect to AD FS -> Keycloak -> password + TOTP.
+- **Outlook desktop, EWS, MAPI, EAS, OAB** use OAuth 2.0 -> AD FS -> Keycloak -> password + TOTP.
+- No cloud dependency, no per-user Entra licensing, self-hosted TOTP.
+
+## Architecture
+
+```
+Client --443/TLS--> HAProxy (SSL bridging, WAF) --re-encrypt--> backends:
+    mail / owa / ecp / autodiscover.corp.example -> Exchange
+    sts.corp.example                             -> AD FS
+    kc.corp.example                              -> Keycloak (TOTP)
+
+AD FS  --Claims Provider Trust (SAML)-->  Keycloak  --LDAP-->  Active Directory
+```
+
+Three independent enforcement layers:
+
+| Layer | Clients | Mechanism |
+| --- | --- | --- |
+| 1. Browser | OWA, ECP | WS-Federation claims -> AD FS -> Keycloak -> TOTP |
+| 2. WAF | OWA web surface | Coraza + OWASP CRS v4 (DetectionOnly -> On) |
+| 3. Rich client | Outlook, EWS, MAPI, EAS, OAB | OAuth 2.0 -> AD FS -> Keycloak -> TOTP |
+
+## Client support matrix
+
+| Protocol | Modern auth | | Client | Modern auth |
+| --- | --- | --- | --- | --- |
+| MAPI/HTTP | Yes | | Outlook Classic (Win) | Yes |
+| EWS | Yes | | macOS Mail | Yes |
+| EAS | Yes | | iOS Mail | Yes |
+| OAB | Yes | | Outlook New (Win) | Falls back to Basic |
+| RPC/HTTP | No | | Outlook iOS/Android | Falls back to Basic |
+| IMAP / POP | No | | Gmail app | Falls back to Basic |
+
+Rich-client modern auth on Windows **requires Windows 11 22H2+** (OS-level WAM broker) and
+Outlook M365 Apps / 2021 Retail 2304+. See [docs/01-prerequisites.md](docs/01-prerequisites.md).
+
+## Repository layout
+
+```
+docs/     step-by-step guides (00..09)
+scripts/  PowerShell (AD FS, Exchange, client) + Keycloak helpers
+config/   HAProxy, Coraza WAF, Keycloak login theme (templates)
+```
+
+## Quick start
+
+1. Read [docs/00-overview.md](docs/00-overview.md) and [docs/01-prerequisites.md](docs/01-prerequisites.md).
+2. Stand up AD FS + Keycloak: [docs/02-adfs-keycloak.md](docs/02-adfs-keycloak.md).
+3. Enable modern auth on Exchange: [docs/03-exchange-modern-auth.md](docs/03-exchange-modern-auth.md).
+4. Put HAProxy in front: [docs/04-haproxy-ssl-bridging.md](docs/04-haproxy-ssl-bridging.md).
+5. Wire browser 2FA (OWA/ECP): [docs/05-browser-owa-ecp.md](docs/05-browser-owa-ecp.md).
+6. Wire rich-client 2FA (Outlook): [docs/06-rich-client-outlook.md](docs/06-rich-client-outlook.md).
+7. Mobile EAS + Keycloak theming: [docs/07-eas-mobile.md](docs/07-eas-mobile.md), [docs/08-keycloak-login-theme.md](docs/08-keycloak-login-theme.md).
+8. When something breaks: [docs/09-troubleshooting.md](docs/09-troubleshooting.md).
+
+## Naming convention used in docs
+
+The guides use placeholder names - substitute your own:
+
+| Placeholder | Meaning | Example |
+| --- | --- | --- |
+| `corp.example` | AD DNS domain | your AD forest |
+| `CORP` | NetBIOS domain | your NetBIOS name |
+| `sts.corp.example` | AD FS service FQDN | |
+| `kc.corp.example` | Keycloak FQDN | |
+| `mail.corp.example` | Exchange namespace | |
+| `10.0.0.x` | example IPs | your subnet |
+
+Passwords, thumbprints, and client secrets are always placeholders like
+`<STRONG_PASSWORD>` / `<THUMBPRINT>`. **Never commit real secrets.**
+
+## Status
+
+Validated end-to-end: OWA/ECP browser TOTP, Coraza WAF on OWA, Outlook Classic modern auth
+(MAPI + EWS OAuth), macOS/iOS Mail EAS. Contributions and issues welcome.
+
+## License
+
+MIT (c) 2026 Igor Batin. Attribution required - keep the copyright notice. See [LICENSE](LICENSE).

@@ -1,0 +1,21 @@
+# Secrets and local config
+*.env
+.env*
+!.env.example
+*.pem
+*.pfx
+*.key
+*.crt
+*.cer
+certs/
+secrets/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Runtime
+*.log

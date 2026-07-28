@@ -1,0 +1,23 @@
+# Coraza SPOA agent config. Listens on 127.0.0.1:9001 for HAProxy SPOE.
+bind: 0.0.0.0:9001
+log_level: info
+log_format: json
+
+# Per-application WAF engine. Start in DetectionOnly, collect false positives, then switch
+# "SecRuleEngine DetectionOnly" to "SecRuleEngine On" to enforce.
+applications:
+  owa:
+    directives: |
+      SecRuleEngine DetectionOnly
+      SecRequestBodyAccess On
+      SecResponseBodyAccess Off
+      SecRequestBodyLimit 13107200
+      SecRequestBodyLimitAction ProcessPartial
+
+      # OWASP Core Rule Set v4 (mounted into the container).
+      Include /etc/coraza-spoa/coraza.conf-recommended
+      Include /etc/coraza-spoa/crs-setup.conf
+      Include /etc/coraza-spoa/rules/*.conf
+
+    transaction_ttl_ms: 60000
+    request_body_in_memory_limit: 13107200
