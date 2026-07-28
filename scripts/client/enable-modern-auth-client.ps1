@@ -7,9 +7,17 @@
     and Outlook M365 Apps / 2021 Retail 2304+.
 .NOTES
     Run as the signed-in user (HKCU writes) with admin rights (HKLM writes). Adjust the STS FQDN.
+
+    WARNING about -ExcludeO365Endpoint: it sets ExcludeExplicitO365Endpoint, which stops Office
+    from ever contacting the Office 365 endpoint. Use it ONLY in a pure on-prem environment.
+    In a hybrid / Exchange Online deployment it breaks Autodiscover and modern auth for the
+    cloud mailboxes - leave it off ($false, the default) there.
 #>
 param(
-    [string]$StsFqdn = 'sts.corp.example'
+    [string]$StsFqdn = 'sts.corp.example',
+
+    # Force on-prem only. ONLY safe when there is NO Office 365 / Exchange Online in production.
+    [switch]$ExcludeO365Endpoint
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,15 +29,22 @@ $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($trustPath, $true)
 $k.CreateSubKey("https://$StsFqdn/") | Out-Null
 $k.CreateSubKey("https://$StsFqdn")  | Out-Null
 
-# HKCU: Office identity - prefer on-prem, do not drift to O365.
+# HKCU: Office identity - enable on-prem modern auth.
 $identity = 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Common\Identity'
 New-Item $identity -Force | Out-Null
 Set-ItemProperty $identity -Name EnableExchangeOnPremModernAuth -Value 1 -Type DWord
-Set-ItemProperty $identity -Name ExcludeExplicitO365Endpoint     -Value 1 -Type DWord
 
-$autod = 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Autodiscover'
-New-Item $autod -Force | Out-Null
-Set-ItemProperty $autod -Name ExcludeExplicitO365Endpoint -Value 1 -Type DWord
+# ExcludeExplicitO365Endpoint - ONLY for pure on-prem (no O365 in production). See the WARNING
+# in .NOTES. In a hybrid / Exchange Online tenant this breaks cloud-mailbox Autodiscover.
+if ($ExcludeO365Endpoint) {
+    Set-ItemProperty $identity -Name ExcludeExplicitO365Endpoint -Value 1 -Type DWord
+    $autod = 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Autodiscover'
+    New-Item $autod -Force | Out-Null
+    Set-ItemProperty $autod -Name ExcludeExplicitO365Endpoint -Value 1 -Type DWord
+    Write-Host "ExcludeExplicitO365Endpoint set (on-prem only mode)."
+} else {
+    Write-Host "Skipped ExcludeExplicitO365Endpoint (safe for hybrid). Pass -ExcludeO365Endpoint for pure on-prem."
+}
 
 $exch = 'HKCU:\SOFTWARE\Microsoft\Exchange'
 New-Item $exch -Force | Out-Null

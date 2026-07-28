@@ -25,12 +25,20 @@ $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SOFTWARE\Policies\Micr
 $k.CreateSubKey('https://sts.corp.example/')  | Out-Null
 $k.CreateSubKey('https://sts.corp.example')   | Out-Null
 
-# HKCU: Office identity - prefer on-prem, do not jump to O365
+# HKCU: Office identity - enable on-prem modern auth
 Set-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Common\Identity' -Name EnableExchangeOnPremModernAuth -Value 1 -Type DWord
+Set-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Exchange' -Name AlwaysUseMSOAuthForAutoDiscover -Value 1 -Type DWord
+
+# ExcludeExplicitO365Endpoint - PURE ON-PREM ONLY. Do NOT set these in a hybrid / Exchange
+# Online environment; they stop Office from contacting the O365 endpoint and break cloud
+# mailboxes. In the script, pass -ExcludeO365Endpoint to opt in.
 Set-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Common\Identity' -Name ExcludeExplicitO365Endpoint -Value 1 -Type DWord
 Set-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Outlook\Autodiscover' -Name ExcludeExplicitO365Endpoint -Value 1 -Type DWord
-Set-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Exchange' -Name AlwaysUseMSOAuthForAutoDiscover -Value 1 -Type DWord
 ```
+
+> Warning: `ExcludeExplicitO365Endpoint` forces on-prem only. Use it **only if you have no
+> Office 365 / Exchange Online in production** - in a hybrid tenant it breaks Autodiscover and
+> modern auth for cloud mailboxes.
 
 ## 3. Add the account
 
@@ -48,6 +56,6 @@ Keycloak, prompts for password + TOTP, and Outlook reports "Account successfully
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `[7q6ck]` before AD FS even opens | client is not Win11 22H2+ (no WAM broker) | use Win11 22H2+ |
-| `[2605]` after TOTP, token never reaches Exchange | Extended Protection behind bridging proxy, or MSIS9642 | relax EP; set CPT AnchorClaimType |
+| `[2605]` after TOTP, token never reaches Exchange | MSIS9642 - missing anchor claim on the CPT | `Set-AdfsClaimsProviderTrust -AnchorClaimType .../upn` |
 | client drifts to Office 365 | AuthServer not default endpoint | `Set-AuthServer -IsDefaultAuthorizationEndpoint $true` |
 | 404 flashes after login | broker hits `/common/sso/final` on AD FS | HAProxy returns 200 for `/common/sso/*` |

@@ -21,5 +21,5 @@ Set-AuthServer -Identity ADFS -IsDefaultAuthorizationEndpoint $true
 
 Set-OrganizationConfig -OAuth2ClientProfileEnabled $true
 
-Write-Host "Modern auth enabled. Next: add the AD FS Application Group (add-application-group-outlook.ps1),"
-Write-Host "relax Extended Protection (disable-extended-protection.ps1), and set the client registry."
+Write-Host "Modern auth enabled. Next: add the AD FS Application Group (add-application-group-outlook.ps1)"
+Write-Host "and set the client registry (enable-modern-auth-client.ps1). Extended Protection can stay at Require."

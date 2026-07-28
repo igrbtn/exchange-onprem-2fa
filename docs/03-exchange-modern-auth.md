@@ -3,8 +3,7 @@
 Enable OAuth 2.0 on Exchange and register AD FS as the authorization server. This follows
 Microsoft's guide, plus the fixes that guide omits.
 
-Scripts: [../scripts/exchange/configure-modern-auth.ps1](../scripts/exchange/configure-modern-auth.ps1),
-[../scripts/exchange/disable-extended-protection.ps1](../scripts/exchange/disable-extended-protection.ps1).
+Script: [../scripts/exchange/configure-modern-auth.ps1](../scripts/exchange/configure-modern-auth.ps1).
 
 ## 1. Register AD FS as the AuthServer
 
@@ -46,22 +45,17 @@ Set-OrganizationConfig -DefaultAuthenticationPolicy 'Block Legacy Auth'
 # Set-User -Identity <user> -AuthenticationPolicy <policy>
 ```
 
-## 4. Extended Protection MUST be relaxed behind an SSL-bridging proxy
+## 4. Extended Protection can stay enabled
 
-Exchange CU14 enables Extended Protection (channel binding) by default. Behind an
-SSL-bridging proxy the TLS channel binding token does not match, so OAuth calls fail with a
-generic `[2605] server error`. Disable EP token checking on the virtual directories:
+Leave Extended Protection at its default (`Require`) - it does **not** need to be relaxed for
+this design, even behind an SSL-bridging proxy. OAuth Bearer requests do not carry the TLS
+channel-binding token that Extended Protection enforces on Windows-integrated auth, so
+bridging does not break the modern-auth path. This design routes only OAuth/claims traffic
+through the proxy, so channel binding is never in play for the clients.
 
-```powershell
-Get-MapiVirtualDirectory        | Set-MapiVirtualDirectory        -ExtendedProtectionTokenChecking None
-Get-WebServicesVirtualDirectory | Set-WebServicesVirtualDirectory -ExtendedProtectionTokenChecking None -Force
-Get-OabVirtualDirectory         | Set-OabVirtualDirectory         -ExtendedProtectionTokenChecking None
-Get-ActiveSyncVirtualDirectory  | Set-ActiveSyncVirtualDirectory  -ExtendedProtectionTokenChecking None
-iisreset
-```
-
-> If your proxy does SSL pass-through (not bridging) you may keep EP - but then the WAF and
-> host-based routing in [04](04-haproxy-ssl-bridging.md) are not possible.
+> If you see `[2605] server error` after the TOTP prompt, the cause is almost always a missing
+> anchor claim on the Keycloak Claims Provider Trust (MSIS9642), not Extended Protection. See
+> [09-troubleshooting.md](09-troubleshooting.md).
 
 ## 5. Verify
 
