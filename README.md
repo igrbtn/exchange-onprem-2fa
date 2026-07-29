@@ -63,17 +63,24 @@ Outlook M365 Apps / 2021 Retail 2304+. See [docs/01-prerequisites.md](docs/01-pr
 ## Repository layout
 
 ```
-docs/     step-by-step guides (00..09)
-scripts/  PowerShell (AD FS, Exchange, client) + Keycloak helpers
+docs/     step-by-step guides (00..10)
+scripts/  PowerShell (AD FS, Exchange, client, WAP) + Keycloak helpers
 config/   HAProxy, Coraza WAF, Keycloak login theme (templates)
 ```
+
+**Front-end variants.** The reverse proxy in front of the backends is pluggable:
+
+- **HAProxy** (default) - Linux, SSL bridging, Coraza WAF, security headers, rate limiting. Docs 04-08.
+- **AD FS Web Application Proxy (WAP)** - Microsoft's native AD FS proxy on Windows; no WAF but
+  supported and simple. See [docs/10-wap-variant.md](docs/10-wap-variant.md). You can also run
+  HAProxy in front of WAP (hybrid) to keep the WAF.
 
 ## Quick start
 
 1. Read [docs/00-overview.md](docs/00-overview.md) and [docs/01-prerequisites.md](docs/01-prerequisites.md).
 2. Stand up AD FS + Keycloak: [docs/02-adfs-keycloak.md](docs/02-adfs-keycloak.md).
 3. Enable modern auth on Exchange: [docs/03-exchange-modern-auth.md](docs/03-exchange-modern-auth.md).
-4. Put HAProxy in front: [docs/04-haproxy-ssl-bridging.md](docs/04-haproxy-ssl-bridging.md).
+4. Put a reverse proxy in front: [docs/04-haproxy-ssl-bridging.md](docs/04-haproxy-ssl-bridging.md) (HAProxy) or [docs/10-wap-variant.md](docs/10-wap-variant.md) (AD FS WAP).
 5. Wire browser 2FA (OWA/ECP): [docs/05-browser-owa-ecp.md](docs/05-browser-owa-ecp.md).
 6. Wire rich-client 2FA (Outlook): [docs/06-rich-client-outlook.md](docs/06-rich-client-outlook.md).
 7. Mobile EAS + Keycloak theming: [docs/07-eas-mobile.md](docs/07-eas-mobile.md), [docs/08-keycloak-login-theme.md](docs/08-keycloak-login-theme.md).

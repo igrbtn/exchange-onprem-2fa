@@ -18,3 +18,17 @@ Run order:
 
 PowerShell scripts assume the AD FS module / Exchange Management Shell is available. The shell
 script needs `kcadm.sh` on PATH and Keycloak admin credentials in environment variables.
+
+## WAP variant (alternative to HAProxy)
+
+If you use AD FS Web Application Proxy instead of HAProxy (see
+[../docs/10-wap-variant.md](../docs/10-wap-variant.md)), run these on the WAP server (workgroup)
+and the AD FS server:
+
+| Step | Script | Where |
+| --- | --- | --- |
+| a | `wap/import-certs.ps1` | WAP server |
+| b | `wap/install-wap.ps1` | WAP server |
+| c | `wap/publish-apps.ps1` | WAP server |
+| d | `wap/harden-wap-schannel.ps1` (then reboot) | WAP server |
+| e | `wap/harden-adfs.ps1` | AD FS server |
