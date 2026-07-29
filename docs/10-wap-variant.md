@@ -132,10 +132,19 @@ Script: [../scripts/wap/harden-adfs.ps1](../scripts/wap/harden-adfs.ps1).
 
 ## Caveats vs the HAProxy build
 
+- **OWA in a browser hangs on "Starting..." through WAP.** WAP pass-through does not upgrade
+  OWA's notification **WebSocket**; OWA repeatedly waits out the timeout, so the shell loads but
+  the mailbox never renders (resources trickle in minutes apart). Rich clients (Outlook, EAS) and
+  AD FS/Keycloak sign-in are unaffected - only browser OWA. **Fix: front the browser path with
+  HAProxy** (the hybrid below), which handles the WebSocket (`timeout tunnel`).
 - **No `/common/sso/*` 200 rule** - the post-auth 404 flash in the Outlook popup
   ([09 #7](09-troubleshooting.md)) can reappear. WAP has no easy synthetic-response hook.
 - **No WAF / security headers / rate limiting.** If you need those, use the hybrid
   (HAProxy in front of WAP) or the pure HAProxy build.
+
+Because of the OWA WebSocket limitation, a **hybrid** is often the best WAP deployment: HAProxy
+(with the WAF and WebSocket handling) terminates client TLS and forwards to WAP, which remains the
+supported AD FS proxy. Clients -> HAProxy -> WAP -> AD FS/Exchange.
 
 ## Verify
 

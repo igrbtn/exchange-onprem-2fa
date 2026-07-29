@@ -32,3 +32,14 @@ and the AD FS server:
 | c | `wap/publish-apps.ps1` | WAP server |
 | d | `wap/harden-wap-schannel.ps1` (then reboot) | WAP server |
 | e | `wap/harden-adfs.ps1` | AD FS server |
+
+## Native AD FS TOTP variant (no external IdP)
+
+To use a native AD FS MFA adapter (adfsmfa) instead of Keycloak (see
+[../docs/11-native-adfs-totp.md](../docs/11-native-adfs-totp.md)), after installing the adfsmfa MSI:
+
+| Step | Script | Where | Note |
+| --- | --- | --- | --- |
+| a | `adfs-mfa/configure-adfsmfa.ps1` | AD FS server | **run locally** - `*-MFA*` cmdlets are not remotable |
+| b | `adfs-mfa/grant-permissions.ps1` | AD FS server / DC | delegate AD attrs + config.db ACL |
+| c | `adfs-mfa/enforce-mfa-adfs.ps1` | AD FS server | local auth + require-MFA Access Control Policy |
